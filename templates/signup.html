@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block header %}
+    <div>
+        <a href="/"><div>Short URL</div></a>
+    </div>
+{% endblock %}
+
+{% block main %}
+    <div class="container">
+        <form action="/signup" method="post">
+            <input type="text" name="login" placeholder="Логин" required>
+            <input type="password" name="password" placeholder="Пароль" required>
+            <input type="password" name="password_check" placeholder="Подтверждение пароля" required>
+            <button type="submit">Зарегистрироваться</button>
+        </form>
+        <div class="errors">
+            {% if errors %}
+                {% for error in errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}
+

@@ -1,95 +1,105 @@
-from flask import Flask, request, jsonify, redirect
-from flask_sqlalchemy import SQLAlchemy
+import os
+import secrets
+from sqlite3 import IntegrityError
+from flask import Flask, request, redirect, jsonify, render_template, flash, url_for, abort
 from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from datetime import datetime, timedelta
-import hashlib
+from flask_login import login_user, LoginManager, logout_user, current_user
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import check_password_hash, generate_password_hash
+from models import db, ShortenedLink, users
+from config import Config
 
 app = Flask(__name__)
 
-# Конфигурация базы данных
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://ershtrub:postgres@127.0.0.1:5432/RPP_RGR'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 # Инициализация компонентов
-db = SQLAlchemy(app)
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})
-limiter = Limiter(app, key_func=get_remote_address)
+db.init_app(app)
 
-# Модели для базы данных
-class ShortenedLink(db.Model):
-    __tablename__ = 'shortened_links'
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.String(80), nullable=True)
-    original_url = db.Column(db.String(255), nullable=False)
-    short_id = db.Column(db.String(6), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    click_count = db.Column(db.Integer, default=0)
-    ip_addresses = db.Column(db.PickleType, default=[])
+# Инициализация LoginManager
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
 
-# Эндпоинт для создания короткой ссылки
-@app.route('/shorten', methods=['POST'])
-@limiter.limit("10 per day")  # Ограничение на 10 запросов в день
-def shorten():
-    data = request.get_json()
-    original_url = data.get('original_url')
-    user_id = data.get('user_id')
+# Загрузка пользователя по ID
+@login_manager.user_loader
+def load_users(user_id):
+    return users.query.get(int(user_id))
 
-    if not original_url:
-        return jsonify({"error": "Original URL is required"}), 400
+@app.route('/', methods=['GET'])
+def main():
+    return render_template('index.html')
 
-    # Генерация уникального идентификатора
-    short_id = hashlib.md5(original_url.encode()).hexdigest()[:6]
+## Страница Входа
+@app.route('/signin', methods=['GET', 'POST'])
+def login():
+    if request.method == 'GET':
+        return render_template('signin.html')
 
-    # Сохранение в базе данных
-    new_link = ShortenedLink(original_url=original_url, user_id=user_id, short_id=short_id)
-    db.session.add(new_link)
-    db.session.commit()
+    errors = []
+    login = request.form.get('login')
+    password = request.form.get('password')
+    user = users.query.filter_by(login=login).first()
 
-    return jsonify({"shortened_url": f"http://127.0.0.1:5000/{short_id}"}), 201
+    # Ошибка: поля не заполнены
+    if not login or not password:
+        errors.append('Пожалуйста, заполните все поля')
+    elif user is None:
+        errors.append('Такой пользователь отсутствует')
+    elif not check_password_hash(user.password, password):
+        errors.append('Неверный пароль')
+    else:
+        login_user(user)
+        flash('Вы успешно вошли!', 'success')
+        return redirect(url_for('index'))
 
-# Эндпоинт для перенаправления
-@app.route('/<short_id>', methods=['GET'])
-@cache.cached(timeout=3600, key_prefix='short_url_')  # Кэширование на 1 час
-@limiter.limit("100 per day")  # Ограничение на 100 кликов по ссылке с одного IP
-def redirect_to_url(short_id):
-    # Проверка кэша
-    cached_url = cache.get(short_id)
-    if cached_url:
-        return redirect(cached_url)
+    return render_template('login.html', errors=errors, login=login, password='')
 
-    # Получение оригинальной ссылки из базы данных
-    link = ShortenedLink.query.filter_by(short_id=short_id).first()
-    if not link:
-        return jsonify({"error": "Shortened link not found"}), 404
+## Страница Регистрации
+@app.route('/signup', methods=['GET', 'POST'])
+def register():
+    if request.method == 'GET':
+        return render_template('signup.html')
 
-    # Обновление статистики
-    link.click_count += 1
-    ip_address = get_remote_address()
-    if ip_address not in link.ip_addresses:
-        link.ip_addresses.append(ip_address)
-    db.session.commit()
+    errors = []
+    login = request.form.get('login')
+    password = request.form.get('password')
+    password_check = request.form.get('password_check')
 
-    # Кэширование оригинального URL
-    cache.set(short_id, link.original_url, timeout=3600)
+    if not login or not password or not password_check:
+        errors.append("Все поля должны быть заполнены")
 
-    return redirect(link.original_url)
+    elif password != password_check:
+        errors.append("Пароли не совпадают")
 
-# Эндпоинт для просмотра статистики
-@app.route('/stats/<short_id>', methods=['GET'])
-def get_stats(short_id):
-    link = ShortenedLink.query.filter_by(short_id=short_id).first()
-    if not link:
-        return jsonify({"error": "Shortened link not found"}), 404
+    user = users.query.filter_by(login=login).first()
+    if user:
+        errors.append("Пользователь с таким логином уже существует")
 
-    return jsonify({
-        "click_count": link.click_count,
-        "unique_ips": len(link.ip_addresses),
-        "ip_addresses": link.ip_addresses
-    })
+    if not errors:
+        try:
+            hashed_password = generate_password_hash(password)
+            new_user = users(login=login, password=hashed_password)
+            db.session.add(new_user)
+            db.session.commit()
+            flash('Вы успешно зарегистрировались!', 'success')  # Добавить flash сообщение об успехе
+            return redirect(url_for('signin'))
+        except Exception as e:
+            db.session.rollback()
+    return render_template('signup.html', errors=errors, login=login, password='', password_check='')
+
+
+
+## Выход пользователя
+@app.route('/logout')
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
+
 
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()
+        db.create_all()  # Create tables if they don't exist
     app.run(debug=True)
+
+
+
