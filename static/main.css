@@ -103,3 +103,6 @@ header a div {
 header a:hover div {
     background-color: #ddd;
 }
+
+.flashes li.success { color: green; }
+.flashes li.error { color: red; }

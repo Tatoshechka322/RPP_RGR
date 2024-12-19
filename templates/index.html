@@ -1,24 +1,24 @@
 {% extends 'base.html' %}
 
 {% block header %}
-    <div>
-        <a href="/"><div>Short URL</div></a>
-    </div>
+    <h1>Short URL</h1>
 {% endblock %}
 
 {% block main %}
-    <div class="container">
-        <form action="/signin" method="post">
-                <input type="text" name="oldURL" placeholder="Вставьте URL" required>
-                <input type="text" name="new_URL" required>
-                <button type="submit">Вставьте URL</button>
-        </form>
-    </div>
-    <div class="errors">
-        {% if errors %}
-            {% for error in errors %}
-                {{ error }}
-            {% endfor %}
-        {% endif %}
-    </div>
+    <form class="container" method="POST">
+        <label for="original_url">Оригинальный URL:</label><br>
+        <input type="text" id="original_url" name="original_url" required><br>
+        <label for="custom_short_id">Кастомный короткий ID (опционально):</label><br>
+        <input type="text" id="custom_short_id" name="custom_short_id"><br><br>
+        <button type="submit">Сократить URL</button>
+    </form>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class=flashes>
+        {% for category, message in messages %}
+          <li class="{{ category }}">{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
 {% endblock %}
