@@ -172,7 +172,7 @@ def signup():
             db.session.add(new_user)
             db.session.commit()
             flash('Вы успешно зарегистрировались!', 'success')
-            return redirect(url_for('signin'))
+            return redirect(url_for('login'))
         except Exception as e:
             db.session.rollback()
             errors.append(f"Ошибка при регистрации: {e}") #Добавил вывод ошибки
