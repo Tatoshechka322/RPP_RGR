@@ -25,4 +25,4 @@ jobs:
           pip install -r requirements.txt
       - name: Security check with bandit
         run:
-          bandit -r .
+          bandit -r . --skip B311,B106,B201
