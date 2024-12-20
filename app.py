@@ -19,7 +19,7 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)  # Генерация секретного ключа для Flask
 
 # Настройка подключения к базе данных PostgreSQL
-app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://ershtrub:postgres@127.0.0.1:5432/BokovLarionov'
+app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://bokovlarionov:postgres@127.0.0.1:5432/BokovLarionov'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # Отключение отслеживания изменений в SQLAlchemy
 
 # Настройка кэша
